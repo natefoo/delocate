@@ -11,6 +11,31 @@ import warnings
 from .tools import get_install_names, zip2dir, get_rpaths
 from .tmpdirs import TemporaryDirectory
 
+
+def _dir_libs(dirpath, basenames, lib_dict, filt_func):
+    for base in basenames:
+        depending_libpath = realpath(pjoin(dirpath, base))
+        if not filt_func is None and not filt_func(depending_libpath):
+            continue
+        rpaths = get_rpaths(depending_libpath)
+        for install_name in get_install_names(depending_libpath):
+            lib_path = (install_name if install_name.startswith('@')
+                        else realpath(install_name))
+            lib_path = resolve_rpath(lib_path, rpaths)
+            if lib_path in lib_dict:
+                lib_dict[lib_path][depending_libpath] = install_name
+            else:
+                lib_dict[lib_path] = {depending_libpath: install_name}
+
+
+def root_libs(root_path, filt_func=None):
+    # TODO: document
+    lib_dict = {}
+    dirpath, dirnames, basenames = next(os.walk(root_path))
+    _dir_libs(dirpath, basenames, lib_dict, filt_func)
+    return lib_dict
+
+
 def tree_libs(start_path, filt_func=None):
     """ Return analysis of library dependencies within `start_path`
 
@@ -49,19 +74,7 @@ def tree_libs(start_path, filt_func=None):
     """
     lib_dict = {}
     for dirpath, dirnames, basenames in os.walk(start_path):
-        for base in basenames:
-            depending_libpath = realpath(pjoin(dirpath, base))
-            if not filt_func is None and not filt_func(depending_libpath):
-                continue
-            rpaths = get_rpaths(depending_libpath)
-            for install_name in get_install_names(depending_libpath):
-                lib_path = (install_name if install_name.startswith('@')
-                            else realpath(install_name))
-                lib_path = resolve_rpath(lib_path, rpaths)
-                if lib_path in lib_dict:
-                    lib_dict[lib_path][depending_libpath] = install_name
-                else:
-                    lib_dict[lib_path] = {depending_libpath: install_name}
+        _dir_libs(dirpath, basenames, lib_dict, filt_func)
     return lib_dict
 
 
