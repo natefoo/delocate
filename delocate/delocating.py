@@ -404,7 +404,6 @@ def delocate_wheel(in_wheel,
                 set_install_id(copied_path, install_id_root + lib_base)
                 validate_signature(copied_path)
             _merge_lib_dict(all_copied, copied_libs)
-
         if len(all_copied):
             rewrite_record(wheel_dir)
         if len(all_copied) or not in_place:
