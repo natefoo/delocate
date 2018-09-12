@@ -379,36 +379,6 @@ def delocate_wheel(in_wheel,
         is the ``install_name`` of ``copied_lib_path`` in the depending
         library. The filenames in the keys are relative to the wheel root path.
     """
-    def _delocate_path(path, lib_path, lib_dict):
-        lib_path_exists = exists(lib_path)
-        print('#### %s %s %s' % (path, lib_path, lib_dict))
-        copied_libs = delocate_path(path, lib_path, lib_dict, copy_filt_func)
-        if copied_libs and lib_path_exists:
-            raise DelocationError(
-                '{0} already exists in wheel but need to copy '
-                '{1}'.format(lib_path, '; '.join(copied_libs)))
-        if len(os.listdir(lib_path)) == 0:
-            shutil.rmtree(lib_path)
-        # Check architectures
-        if not require_archs is None:
-            stop_fast = not check_verbose
-            bads = check_archs(copied_libs, require_archs, stop_fast)
-            if len(bads) != 0:
-                if check_verbose:
-                    print(bads_report(bads, pjoin(tmpdir, 'wheel')))
-                raise DelocationError(
-                    "Some missing architectures in wheel")
-        # Change install ids to be unique within Python space
-        install_id_root = (DLC_PREFIX +
-                           relpath(path, wheel_dir) +
-                           '/')
-        for lib in copied_libs:
-            lib_base = basename(lib)
-            copied_path = pjoin(lib_path, lib_base)
-            set_install_id(copied_path, install_id_root + lib_base)
-            validate_signature(copied_path)
-        _merge_lib_dict(all_copied, copied_libs)
-
     if lib_filt_func == "dylibs-only":
         lib_filt_func = _dylibs_only
     in_wheel = abspath(in_wheel)
@@ -418,44 +388,49 @@ def delocate_wheel(in_wheel,
         out_wheel = abspath(out_wheel)
     in_place = in_wheel == out_wheel
     with TemporaryDirectory() as tmpdir:
+        candidates = []
         all_copied = {}
         wheel_dir = realpath(pjoin(tmpdir, 'wheel'))
         zip2dir(in_wheel, wheel_dir)
-
-        '''
-        ###
-        lib_dict = root_libs(wheel_dir, lib_filt_func)
-        print('#### root lib_dict: %s' % lib_dict)
-        if not copy_filt_func is None:
-            lib_dict = dict((key, value) for key, value in lib_dict.items()
-                            if copy_filt_func(key))
-        print('#### root lib_dict: %s' % lib_dict)
-        for k, v in lib_dict.items():
-            for k2, v2 in v.items():
-                b = basename(k2)
-                b2 = b.split('.', 1)[0]
-                d = {k: {k2: v2}}
-                lib_path = pjoin(wheel_dir, lib_sdir + b2)
-                if not exists(lib_path):
-                    os.makedirs(lib_path)
-                print('#### d %s' % d)
-                #print('#### delocate_tree_libs(%s, %s, %s)' % (d, lib_path, wheel_dir))
-                copied = delocate_tree_libs(d, lib_path, wheel_dir)
-                copied_libs = copy_recurse(lib_path, copy_filt_func, copied)
-                _merge_lib_dict(all_copied, copied_libs)
-        #copied = delocate_tree_libs(lib_dict, wheel_dir, wheel_dir)
-        #copied_libs = copy_recurse(wheel_dir, copy_filt_func, copied)
-        ###
-        '''
+        # Check for top-level modules
         root_lib_dict = _filter_lib_dict(wheel_dir, lib_filt_func, copy_filt_func, root_libs)
         for root_name, lib_dict in _iter_lib_dict_by_root_name(root_lib_dict):
-            print('### root_name %s' % root_name)
             lib_path = pjoin(wheel_dir, lib_sdir + root_name)
-            _delocate_path(wheel_dir, lib_path, lib_dict)
+            candidates.append((wheel_dir, lib_path, lib_dict))
+        # Everything else is in package dirs
         for package_path in find_package_dirs(wheel_dir):
             lib_path = pjoin(package_path, lib_sdir)
             lib_dict = _filter_lib_dict(package_path, lib_filt_func, copy_filt_func)
-            _delocate_path(package_path, lib_path, lib_dict)
+            candidates.append((package_path, lib_path, lib_dict))
+        for path, lib_path, lib_dict in candidates:
+            lib_path_exists = exists(lib_path)
+            copied_libs = delocate_path(path, lib_path, lib_dict, copy_filt_func)
+            if copied_libs and lib_path_exists:
+                raise DelocationError(
+                    '{0} already exists in wheel but need to copy '
+                    '{1}'.format(lib_path, '; '.join(copied_libs)))
+            if len(os.listdir(lib_path)) == 0:
+                shutil.rmtree(lib_path)
+            # Check architectures
+            if not require_archs is None:
+                stop_fast = not check_verbose
+                bads = check_archs(copied_libs, require_archs, stop_fast)
+                if len(bads) != 0:
+                    if check_verbose:
+                        print(bads_report(bads, pjoin(tmpdir, 'wheel')))
+                    raise DelocationError(
+                        "Some missing architectures in wheel")
+            # Change install ids to be unique within Python space
+            install_id_root = (DLC_PREFIX +
+                               relpath(path, wheel_dir) +
+                               '/')
+            for lib in copied_libs:
+                lib_base = basename(lib)
+                copied_path = pjoin(lib_path, lib_base)
+                set_install_id(copied_path, install_id_root + lib_base)
+                validate_signature(copied_path)
+            _merge_lib_dict(all_copied, copied_libs)
+
         if len(all_copied):
             rewrite_record(wheel_dir)
         if len(all_copied) or not in_place:
