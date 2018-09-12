@@ -11,9 +11,9 @@ import warnings
 from subprocess import Popen, PIPE
 
 from .pycompat import string_types
-from .libsana import root_libs, tree_libs, stripped_lib_dict, get_rp_stripper
+from .libsana import tree_libs, stripped_lib_dict, get_rp_stripper
 from .tools import (set_install_name, zip2dir, dir2zip, validate_signature,
-                    find_package_dirs, set_install_id, get_archs)
+                    find_packages, set_install_id, get_archs)
 from .tmpdirs import TemporaryDirectory
 from .wheeltools import rewrite_record, InWheel
 
@@ -243,8 +243,8 @@ def filter_system_libs(libname):
                 libname.startswith('/System'))
 
 
-def delocate_path(tree_path, lib_path, lib_dict,
-#                  lib_filt_func = None,
+def delocate_path(tree_path, lib_path,
+                  lib_filt_func = None,
                   copy_filt_func = filter_system_libs):
     """ Copy required libraries for files in `tree_path` into `lib_path`
 
@@ -277,37 +277,16 @@ def delocate_path(tree_path, lib_path, lib_dict,
         is the ``install_name`` of ``copied_lib_path`` in the depending
         library.
     """
-    #if lib_filt_func == "dylibs-only":
-    #    lib_filt_func = _dylibs_only
-    if not exists(lib_path):
-        os.makedirs(lib_path)
-    #lib_dict = lib_dict_func(tree_path, lib_filt_func)
-    #if not copy_filt_func is None:
-    #    lib_dict = dict((key, value) for key, value in lib_dict.items()
-    #                    if copy_filt_func(key))
-    copied = delocate_tree_libs(lib_dict, lib_path, tree_path)
-    return copy_recurse(lib_path, copy_filt_func, copied)
-
-
-def _filter_lib_dict(tree_path,
-                       lib_filt_func = None,
-                       copy_filt_func = filter_system_libs,
-                       lib_dict_func = tree_libs):
     if lib_filt_func == "dylibs-only":
         lib_filt_func = _dylibs_only
-    lib_dict = lib_dict_func(tree_path, lib_filt_func)
+    if not exists(lib_path):
+        os.makedirs(lib_path)
+    lib_dict = tree_libs(tree_path, lib_filt_func)
     if not copy_filt_func is None:
         lib_dict = dict((key, value) for key, value in lib_dict.items()
                         if copy_filt_func(key))
-    return lib_dict
-
-
-def _iter_lib_dict_by_root_name(lib_dict):
-    for libpath, dependings_dict in lib_dict.items():
-        # there shouldn't be more than one root_name per dependings_dict
-        for depending_libpath, install_name in dependings_dict.items():
-            root_name = basename(depending_libpath).split('.', 1)[0]
-            yield root_name, {libpath: {depending_libpath: install_name}}
+    copied = delocate_tree_libs(lib_dict, lib_path, tree_path)
+    return copy_recurse(lib_path, copy_filt_func, copied)
 
 
 def _merge_lib_dict(d1, d2):
@@ -388,23 +367,18 @@ def delocate_wheel(in_wheel,
         out_wheel = abspath(out_wheel)
     in_place = in_wheel == out_wheel
     with TemporaryDirectory() as tmpdir:
-        candidates = []
         all_copied = {}
         wheel_dir = realpath(pjoin(tmpdir, 'wheel'))
         zip2dir(in_wheel, wheel_dir)
-        # Check for top-level modules
-        root_lib_dict = _filter_lib_dict(wheel_dir, lib_filt_func, copy_filt_func, root_libs)
-        for root_name, lib_dict in _iter_lib_dict_by_root_name(root_lib_dict):
-            lib_path = pjoin(wheel_dir, lib_sdir + root_name)
-            candidates.append((wheel_dir, lib_path, lib_dict))
-        # Everything else is in package dirs
-        for package_path in find_package_dirs(wheel_dir):
-            lib_path = pjoin(package_path, lib_sdir)
-            lib_dict = _filter_lib_dict(package_path, lib_filt_func, copy_filt_func)
-            candidates.append((package_path, lib_path, lib_dict))
-        for path, lib_path, lib_dict in candidates:
+        for package_path, is_dir in find_packages(wheel_dir):
+            if is_dir:
+                lib_path = pjoin(package_path, lib_sdir)
+            else:
+                root_name = basename(package_path).split('.', 1)[0]
+                lib_path = pjoin(dirname(package_path), lib_sdir + root_name)
             lib_path_exists = exists(lib_path)
-            copied_libs = delocate_path(path, lib_path, lib_dict, copy_filt_func)
+            copied_libs = delocate_path(package_path, lib_path,
+                                        lib_filt_func, copy_filt_func)
             if copied_libs and lib_path_exists:
                 raise DelocationError(
                     '{0} already exists in wheel but need to copy '
@@ -422,7 +396,7 @@ def delocate_wheel(in_wheel,
                         "Some missing architectures in wheel")
             # Change install ids to be unique within Python space
             install_id_root = (DLC_PREFIX +
-                               relpath(path, wheel_dir) +
+                               relpath(package_path, wheel_dir) +
                                '/')
             for lib in copied_libs:
                 lib_base = basename(lib)

@@ -3,7 +3,7 @@
 from subprocess import Popen, PIPE
 
 import os
-from os.path import join as pjoin, relpath, isdir, exists
+from os.path import join as pjoin, relpath, isdir, isfile, exists
 import zipfile
 import re
 import stat
@@ -382,8 +382,8 @@ def dir2zip(in_dir, zip_fname):
     z.close()
 
 
-def find_package_dirs(root_path):
-    """ Find python package directories in directory `root_path`
+def find_packages(root_path):
+    """ Find python packages in directory `root_path`
 
     Parameters
     ----------
@@ -393,14 +393,17 @@ def find_package_dirs(root_path):
     Returns
     -------
     package_sdirs : set
-        Set of strings where each is a subdirectory of `root_path`, containing
-        an ``__init__.py`` file.  Paths prefixed by `root_path`
+        Set of strings where each is a subdirectory of `root_path` containing an
+        ``__init__.py`` file, or a C extension single-file module directly in
+        `root_path`.  Paths prefixed by `root_path`
     """
     package_sdirs = set()
     for entry in os.listdir(root_path):
         fname = entry if root_path == '.' else pjoin(root_path, entry)
         if isdir(fname) and exists(pjoin(fname, '__init__.py')):
-            package_sdirs.add(fname)
+            package_sdirs.add((fname, True))
+        elif isfile(fname) and ((fname.endswith('.so') or fname.endswith('.dylib'))):
+            package_sdirs.add((fname, False))
     return package_sdirs
 
 
