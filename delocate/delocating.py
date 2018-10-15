@@ -13,7 +13,7 @@ from subprocess import Popen, PIPE
 from .pycompat import string_types
 from .libsana import tree_libs, stripped_lib_dict, get_rp_stripper
 from .tools import (set_install_name, zip2dir, dir2zip, validate_signature,
-                    find_packages, set_install_id, get_archs)
+                    find_package_dirs, find_packages, set_install_id, get_archs)
 from .tmpdirs import TemporaryDirectory
 from .wheeltools import rewrite_record, InWheel
 

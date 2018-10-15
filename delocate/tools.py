@@ -7,6 +7,7 @@ from os.path import join as pjoin, relpath, isdir, isfile, exists
 import zipfile
 import re
 import stat
+import warnings
 
 class InstallNameError(Exception):
     pass
@@ -382,7 +383,24 @@ def dir2zip(in_dir, zip_fname):
     z.close()
 
 
-def find_packages(root_path):
+def find_package_dirs(root_path):
+    """ Find python package directories in directory `root_path`
+
+    Parameters
+    ----------
+    root_path : str
+        Directory to search for package subdirectories
+
+    Returns
+    -------
+    Set of strings where each is a subdirectory of `root_path`, containing
+    an ``__init__.py`` file.  Paths prefixed by `root_path`
+    """
+    warnings.warn("find_package_dirs() is deprecated, please use find_packages()", DeprecationWarning)
+    return [p for p, is_dir in find_packages(root_path) if is_dir]
+
+
+def find_packages(root_path, lib_filt_func=None):
     """ Find python packages in directory `root_path`
 
     Parameters
@@ -393,9 +411,11 @@ def find_packages(root_path):
     Returns
     -------
     package_sdirs : set
-        Set of strings where each is a subdirectory of `root_path` containing an
-        ``__init__.py`` file, or a C extension single-file module directly in
-        `root_path`.  Paths prefixed by `root_path`
+        Set of (string, is_dir) tuples where each string is a subdirectory of
+        `root_path` containing an ``__init__.py`` file, or a C extension
+        single-file module directly in `root_path`, and is_dir indicates whether
+        the package is a subdirectory module or a single-file module.  Paths
+        prefixed by `root_path`
     """
     package_sdirs = set()
     for entry in os.listdir(root_path):
