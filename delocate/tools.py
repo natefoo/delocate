@@ -422,7 +422,7 @@ def find_packages(root_path, lib_filt_func=None):
         fname = entry if root_path == '.' else pjoin(root_path, entry)
         if isdir(fname) and exists(pjoin(fname, '__init__.py')):
             package_sdirs.add((fname, True))
-        elif isfile(fname) and ((fname.endswith('.so') or fname.endswith('.dylib'))):
+        elif isfile(fname) and dylibs_only(fname):
             package_sdirs.add((fname, False))
     return package_sdirs
 
@@ -544,3 +544,8 @@ def validate_signature(filename):
 
     # This file's signature is invalid and needs to be replaced
     replace_signature(filename, '-') # Replace with an ad-hoc signature
+
+
+def dylibs_only(filename):
+    return (filename.endswith('.so') or
+            filename.endswith('.dylib'))
